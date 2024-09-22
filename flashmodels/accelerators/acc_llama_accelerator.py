@@ -155,6 +155,7 @@ class ACCLLAMAAccelerator(Accelerator):
 
     def resume_from_checkpoint(self, model):
         last_step = get_last_step_from_ckpt(self.args.ckpt_dir)
+        '''
         if xm.is_master_ordinal(local=False):
             try:
                 consolidate_sharded_model_checkpoints(
@@ -165,11 +166,19 @@ class ACCLLAMAAccelerator(Accelerator):
                     f"Can not find checkpoint with step {last_step} to resume."
                 )
                 return model
-        xm.rendezvous("ckpt_consolidation")
+        '''
+        
+        #full_state_dict, _ = consolidate_sharded_model_checkpoints(
+        #            ckpt_prefix=os.path.join(output_dir, ""),
+        #            ckpt_suffix=f"rank*-of-*-{WEIGHTS_NAME}",
+        #            save_model=False,
+        #        )
+        #xm.save(full_state_dict, os.path.join(self.args.ckpt_dir, "_consolidated.pth"))
+        #xm.rendezvous("ckpt_consolidation")
         ckpt_consolidated = torch.load(osp.join(self.args.ckpt_dir,
                                                 "_consolidated.pth"),
                                        mmap=True)
-        model.load_state_dict(ckpt_consolidated["model"])
+        model.load_state_dict(ckpt_consolidated)
         return model
 
     def ulysses(self, model):

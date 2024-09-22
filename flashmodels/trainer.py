@@ -9,6 +9,8 @@ import torch
 import torch_xla.core.xla_model as xm
 import torch_xla.distributed.parallel_loader as pl
 import torch_xla.experimental.xla_sharding as xs
+from torch_xla.distributed.fsdp import consolidate_sharded_model_checkpoints
+
 import torchacc as ta
 from torchacc import amp
 from torchacc.dist import DistributedParallel
@@ -291,12 +293,23 @@ class Trainer(object):
             is_main_process=xm.is_master_ordinal(local=False),
             save_function=ta.save)
         
+        if xm.get_ordinal() == 0:
+            full_state_dict, _ = consolidate_sharded_model_checkpoints(
+                        ckpt_prefix=osp.join(self.args.ckpt_dir, ""),
+                        ckpt_suffix=f"rank-*-of-*-step-{step}.pth",
+                        save_model=False,
+                    )
+        
+            ta.save(full_state_dict, os.path.join(self.args.ckpt_dir, "_consolidated.pth"))
+        xm.rendezvous("saving_model_states")
+        
         optim = DistributedParallel.full_optim_state_dict(self.model, self.optimizer)
         if  xm.get_ordinal() == 0:
             ta.save(optim, os.path.join(
                 self.args.ckpt_dir, f"optimizer-of-step-{step}.pth"
             ))
         xm.rendezvous("saving_optimizer_states")
+        
         
         ta.save(
             self.lr_scheduler.state_dict(),
