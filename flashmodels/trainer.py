@@ -11,6 +11,7 @@ import torch_xla.distributed.parallel_loader as pl
 import torch_xla.experimental.xla_sharding as xs
 import torchacc as ta
 from torchacc import amp
+from torchacc.dist import DistributedParallel
 from torchacc.dist.tp import Mesh
 
 from flashmodels.accelerators.accelerator import AcceleratorFactory
@@ -274,10 +275,12 @@ class Trainer(object):
     def _acc_save(self, step):
         xm.rendezvous("saving_model")
         ta.mark_step()
+        model = self.model.model.model
         ckpt = {
-            "model": self.model.state_dict(),
-            "shard_metadata": self.model.get_shard_metadata(),
+            "model": model.state_dict(),
+            "shard_metadata": model.get_shard_metadata(),
         }
+
         ckpt_path = osp.join(
             self.args.ckpt_dir,
             f"rank-{xm.get_ordinal()}-of-{ta.dist.world_size()}-step-{step}.pth"
@@ -287,19 +290,20 @@ class Trainer(object):
             self.args.ckpt_dir,
             is_main_process=xm.is_master_ordinal(local=False),
             save_function=ta.save)
-
+        
+        optim = DistributedParallel.full_optim_state_dict(self.model, self.optimizer)
+        if  xm.get_ordinal() == 0:
+            ta.save(optim, os.path.join(
+                self.args.ckpt_dir, f"optimizer-of-step-{step}.pth"
+            ))
         xm.rendezvous("saving_optimizer_states")
-        ta.save(
-            self.optimizer.state_dict(),
-            os.path.join(
-                self.args.ckpt_dir, f"optimizer_rank{xm.get_ordinal()}"
-                f"-of-{ta.dist.world_size()}-step-{step}"))
+        
         ta.save(
             self.lr_scheduler.state_dict(),
             os.path.join(
                 self.args.ckpt_dir, f"scheduler_rank{xm.get_ordinal()}"
                 f"-of-{ta.dist.world_size()}-step-{step}"))
-
+    
         # save rng states
         ta.save({"xla": xm.get_rng_state()},
                 os.path.join(

@@ -4,6 +4,8 @@ import os.path as osp
 
 import torch
 import torchacc as ta
+from torchacc.dist import DistributedParallel
+
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                           get_scheduler)
 
@@ -106,7 +108,7 @@ class Builder(object):
         if self.args.resume_from_checkpoint and \
                 get_last_step_from_ckpt(self.args.ckpt_dir) > 0:
             optimizer, lr_scheduler = self._load_optimizer_scheduler(
-                optimizer, lr_scheduler)
+                model, optimizer, lr_scheduler)
         return optimizer, lr_scheduler
 
     def build_optimizer(self, model, args):
@@ -205,21 +207,29 @@ class Builder(object):
     def _get_optimizer_cls(self, args):
         return torch.optim.AdamW
 
-    def _load_optimizer_scheduler(self, optimizer, lr_scheduler):
+    def _load_optimizer_scheduler(self, model, optimizer, lr_scheduler):
         step = get_last_step_from_ckpt(self.args.ckpt_dir)
         if self.args.accelerator == "acc" and self.args.fsdp_num > 1:
 
             # Each process loads its own shard of state.
+            #opt_state = osp.join(
+            #    self.args.ckpt_dir, f"optimizer_rank{ta.dist.local_rank()}"
+            #    f"-of-{ta.dist.world_size()}-step-{step}")
             opt_state = osp.join(
-                self.args.ckpt_dir, f"optimizer_rank{ta.local_rank()}"
-                f"-of-{ta.dist.world_size()}-step-{step}")
+                self.args.ckpt_dir, f"optimizer-of-step-{step}.pth"
+            )
+            
             lr_state = osp.join(
-                self.args.ckpt_dir, f"scheduler_rank{ta.local_rank()}"
+                self.args.ckpt_dir, f"scheduler_rank0"
                 f"-of-{ta.dist.world_size()}-step-{step}")
-            optimizer_state = torch.load(opt_state)
-            lr_scheduler_state = torch.load(lr_state)
-
+            
+            optimizer_state = None
+            if ta.dist.local_rank() == 0:
+                optimizer_state = torch.load(opt_state)
+            
+            optimizer_state = DistributedParallel.load_optim_state_dict(model, optimizer_state)
             optimizer.load_state_dict(optimizer_state)
+            lr_scheduler_state = torch.load(lr_state)
             lr_scheduler.load_state_dict(lr_scheduler_state)
         else:
             print(
