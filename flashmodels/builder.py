@@ -220,8 +220,7 @@ class Builder(object):
             )
             
             lr_state = osp.join(
-                self.args.ckpt_dir, f"scheduler_rank0"
-                f"-of-{ta.dist.world_size()}-step-{step}")
+                self.args.ckpt_dir, f"scheduler_info")
             
             optimizer_state = None
             if ta.dist.local_rank() == 0:

@@ -310,13 +310,16 @@ class Trainer(object):
             ))
         xm.rendezvous("saving_optimizer_states")
         
-        
+        '''
         ta.save(
             self.lr_scheduler.state_dict(),
             os.path.join(
                 self.args.ckpt_dir, f"scheduler_rank{xm.get_ordinal()}"
                 f"-of-{ta.dist.world_size()}-step-{step}"))
-    
+        '''
+        ta.save(self.lr_scheduler.state_dict(),
+            os.path.join(
+                self.args.ckpt_dir, f"scheduler_info"))
         # save rng states
         ta.save({"xla": xm.get_rng_state()},
                 os.path.join(
