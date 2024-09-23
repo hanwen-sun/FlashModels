@@ -275,8 +275,12 @@ class Trainer(object):
             self._acc_save(max_step)
 
     def _acc_save(self, step):
-        xm.rendezvous("saving_model")
         ta.mark_step()
+        
+        checkpoint_folder = f"checkpoint-{step}"
+        output_dir = os.path.join(self.args.ckpt_dir, checkpoint_folder)
+        xm.rendezvous("saving_model")
+        
         model = self.model.model.model
         ckpt = {
             "model": model.state_dict(),
@@ -284,29 +288,31 @@ class Trainer(object):
         }
 
         ckpt_path = osp.join(
-            self.args.ckpt_dir,
-            f"rank-{xm.get_ordinal()}-of-{ta.dist.world_size()}-step-{step}.pth"
+            output_dir,
+            f"rank-{xm.get_ordinal()}-of-{ta.dist.world_size()}.pth"
         )
         ta.save(ckpt, ckpt_path, master_only=False)
-        self.tokenizer.save_pretrained(
-            self.args.ckpt_dir,
-            is_main_process=xm.is_master_ordinal(local=False),
-            save_function=ta.save)
         
-        if xm.get_ordinal() == 0:
+        if xm.is_master_ordinal(local=False):
             full_state_dict, _ = consolidate_sharded_model_checkpoints(
                         ckpt_prefix=osp.join(self.args.ckpt_dir, ""),
                         ckpt_suffix=f"rank-*-of-*-step-{step}.pth",
                         save_model=False,
                     )
         
-            ta.save(full_state_dict, os.path.join(self.args.ckpt_dir, "_consolidated.pth"))
+            ta.save(full_state_dict, os.path.join(output_dir, "consolidated_model.pth"))
+        
         xm.rendezvous("saving_model_states")
         
+        self.tokenizer.save_pretrained(
+            output_dir,
+            is_main_process=xm.is_master_ordinal(local=False),
+            save_function=ta.save)
+        
         optim = DistributedParallel.full_optim_state_dict(self.model, self.optimizer)
-        if  xm.get_ordinal() == 0:
+        if xm.is_master_ordinal(local=False):
             ta.save(optim, os.path.join(
-                self.args.ckpt_dir, f"optimizer-of-step-{step}.pth"
+                output_dir, f"optimizer.pth"
             ))
         xm.rendezvous("saving_optimizer_states")
         
