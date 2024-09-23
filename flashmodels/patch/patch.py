@@ -20,7 +20,7 @@ def rewrite_load():
     memory pressure of loading multiple copies of data under multiple processes"""
     source = inspect.getsource(transformers.modeling_utils)
     modified = re.sub(r"torch\.load\((?![^)]*mmap[^)]*\))([^)]*)\)",
-                      r"torch.load(\g<1>, mmap=True)", source)
+                      r"torch.load(\g<1>, mmap=True)" if version.parse(transformers.__version__) <= version.parse('4.36') else r"torch.load(\g<1> mmap=True)", source)
     modified = re.sub(r"partial\(torch.load,(?![^)]*mmap[^)]*\))([^)]*)\)",
                       r"partial(torch.load,\g<1>, mmap=True)", modified)
     if (int(os.environ.get("LOCAL_RANK", 0)) == 0):
