@@ -302,14 +302,14 @@ class Trainer(object):
         
             ta.save(full_state_dict, os.path.join(self.args.ckpt_dir, "_consolidated.pth"))
         xm.rendezvous("saving_model_states")
-        
+        print("model saving done!")
         optim = DistributedParallel.full_optim_state_dict(self.model, self.optimizer)
-        if  xm.get_ordinal() == 0:
-            ta.save(optim, os.path.join(
-                self.args.ckpt_dir, f"optimizer-of-step-{step}.pth"
-            ))
+        #if  xm.get_ordinal() == 0:
+        ta.save(optim, os.path.join(
+            self.args.ckpt_dir, f"optimizer-of-step-{step}.pth"
+        ))
         xm.rendezvous("saving_optimizer_states")
-        
+        print("optimizer saving done!")
         '''
         ta.save(
             self.lr_scheduler.state_dict(),
