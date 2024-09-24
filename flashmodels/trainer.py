@@ -287,29 +287,54 @@ class Trainer(object):
             self.args.ckpt_dir,
             f"rank-{xm.get_ordinal()}-of-{ta.dist.world_size()}-step-{step}.pth"
         )
+        import time
+        start_time = time.time()
         ta.save(ckpt, ckpt_path, master_only=False)
-        self.tokenizer.save_pretrained(
-            self.args.ckpt_dir,
-            is_main_process=xm.is_master_ordinal(local=False),
-            save_function=ta.save)
+        end_time = time.time()
+        if xm.get_ordinal() == 0:
+            print(f"rank:{xm.get_ordinal()} save shard model time: {end_time - start_time} seconds")
         
         if xm.get_ordinal() == 0:
+            start_time = time.time()
             full_state_dict, _ = consolidate_sharded_model_checkpoints(
                         ckpt_prefix=osp.join(self.args.ckpt_dir, ""),
                         ckpt_suffix=f"rank-*-of-*-step-{step}.pth",
                         save_model=False,
                     )
-        
+            end_time = time.time()
+            print(f"rank:{xm.get_ordinal()} consolidate_sharded_model_checkpoints time: {end_time - start_time} seconds")
+            
+            start_time = time.time()
             ta.save(full_state_dict, os.path.join(self.args.ckpt_dir, "_consolidated.pth"))
+            end_time = time.time()
+            print(f"rank:{xm.get_ordinal()} save consolidate model time: {end_time - start_time} seconds")
+            print("model saving done!")
+            
         xm.rendezvous("saving_model_states")
-        print("model saving done!")
+        
+        
+        self.tokenizer.save_pretrained(
+            self.args.ckpt_dir,
+            is_main_process=xm.is_master_ordinal(local=False),
+            save_function=ta.save)
+        
+        start_time = time.time()
         optim = DistributedParallel.full_optim_state_dict(self.model, self.optimizer)
+        end_time = time.time()
+        if xm.get_ordinal() == 0:
+            print(f"rank:{xm.get_ordinal()} get full optim_state_dict time: {end_time - start_time} seconds")
         #if  xm.get_ordinal() == 0:
+        start_time = time.time()
         ta.save(optim, os.path.join(
             self.args.ckpt_dir, f"optimizer-of-step-{step}.pth"
         ))
+        end_time = time.time()
+        if xm.get_ordinal() == 0:
+            print(f"rank:{xm.get_ordinal()} save full optim_state_dict time: {end_time - start_time} seconds")
+            print("optimizer saving done!")
+        
         xm.rendezvous("saving_optimizer_states")
-        print("optimizer saving done!")
+        
         '''
         ta.save(
             self.lr_scheduler.state_dict(),

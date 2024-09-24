@@ -175,9 +175,16 @@ class ACCLLAMAAccelerator(Accelerator):
         #        )
         #xm.save(full_state_dict, os.path.join(self.args.ckpt_dir, "_consolidated.pth"))
         #xm.rendezvous("ckpt_consolidation")
+        import time
+        start_time = time.time()
         ckpt_consolidated = torch.load(osp.join(self.args.ckpt_dir,
                                                 "_consolidated.pth"),
                                        mmap=True)
+        
+        end_time = time.time()
+        if ta.dist.local_rank() == 0:
+            print(f"rank:{ta.dist.local_rank()} load model time: {end_time - start_time} seconds")
+
         model.load_state_dict(ckpt_consolidated)
         return model
 

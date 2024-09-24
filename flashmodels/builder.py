@@ -221,12 +221,21 @@ class Builder(object):
             
             lr_state = osp.join(
                 self.args.ckpt_dir, f"scheduler_info")
-            
+            import time
             optimizer_state = None
             if ta.dist.local_rank() == 0:
+                start_time = time.time()
                 optimizer_state = torch.load(opt_state)
-            
+                end_time = time.time()
+                print(f"rank:{ta.dist.local_rank()} load consolidate optim_state_dict time: {end_time - start_time} seconds")
+                
+            start_time = time.time()
             optimizer_state = DistributedParallel.load_optim_state_dict(model, optimizer_state)
+            end_time = time.time()
+            
+            if ta.dist.local_rank() == 0:
+                print(f"rank:{ta.dist.local_rank()} optim broadcast time: {end_time - start_time} seconds")
+
             optimizer.load_state_dict(optimizer_state)
             lr_scheduler_state = torch.load(lr_state)
             lr_scheduler.load_state_dict(lr_scheduler_state)
