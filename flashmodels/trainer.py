@@ -292,7 +292,7 @@ class Trainer(object):
         ta.save(ckpt, ckpt_path, master_only=False)
         end_time = time.time()
         if xm.get_ordinal() == 0:
-            print(f"rank:{xm.get_ordinal()} save shard model time: {end_time - start_time} seconds")
+            print(f"rank:{xm.get_ordinal()} save {ta.dist.world_size()} shard model time: {end_time - start_time} seconds")
         
         if xm.get_ordinal() == 0:
             start_time = time.time()

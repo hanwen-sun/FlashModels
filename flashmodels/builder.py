@@ -234,7 +234,7 @@ class Builder(object):
             end_time = time.time()
             
             if ta.dist.local_rank() == 0:
-                print(f"rank:{ta.dist.local_rank()} optim broadcast time: {end_time - start_time} seconds")
+                print(f"rank:{ta.dist.local_rank()} load_optim_state time: {end_time - start_time} seconds")
 
             optimizer.load_state_dict(optimizer_state)
             lr_scheduler_state = torch.load(lr_state)
