@@ -210,11 +210,17 @@ class Builder(object):
         if self.args.accelerator == "acc" and self.args.fsdp_num > 1:
 
             # Each process loads its own shard of state.
+            import time
+            start_time = time.time()
             opt_state = osp.join(
-                self.args.ckpt_dir, f"optimizer_rank{ta.local_rank()}"
+                self.args.ckpt_dir, f"optimizer_rank{ta.dist.local_rank()}"
                 f"-of-{ta.dist.world_size()}-step-{step}")
+            end_time = time.time()
+            if ta.dist.local_rank() == 0:
+                print(f"rank:{ta.dist.local_rank()} load {ta.dist.world_size()} shard optimizer time: {end_time - start_time} seconds")
+            
             lr_state = osp.join(
-                self.args.ckpt_dir, f"scheduler_rank{ta.local_rank()}"
+                self.args.ckpt_dir, f"scheduler_rank{ta.dist.local_rank()}"
                 f"-of-{ta.dist.world_size()}-step-{step}")
             optimizer_state = torch.load(opt_state)
             lr_scheduler_state = torch.load(lr_state)

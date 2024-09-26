@@ -12,6 +12,7 @@ import torch_xla.experimental.xla_sharding as xs
 import torchacc as ta
 from torchacc import amp
 from torchacc.dist.tp import Mesh
+from torch_xla.distributed.fsdp import consolidate_sharded_model_checkpoints
 
 from flashmodels.accelerators.accelerator import AcceleratorFactory
 from flashmodels.logger import logger
@@ -274,31 +275,64 @@ class Trainer(object):
     def _acc_save(self, step):
         xm.rendezvous("saving_model")
         ta.mark_step()
+        model = self.model.model.model
         ckpt = {
-            "model": self.model.state_dict(),
-            "shard_metadata": self.model.get_shard_metadata(),
+            "model": model.state_dict(),
+            "shard_metadata": model.get_shard_metadata(),
         }
         ckpt_path = osp.join(
             self.args.ckpt_dir,
             f"rank-{xm.get_ordinal()}-of-{ta.dist.world_size()}-step-{step}.pth"
         )
+        import time
+        start_time = time.time()
         ta.save(ckpt, ckpt_path, master_only=False)
+        end_time = time.time()
+        if xm.get_ordinal() == 0:
+            print(f"rank:{xm.get_ordinal()} save {ta.dist.world_size()} shard model time: {end_time - start_time} seconds")
+        
+        if xm.get_ordinal() == 0:
+            start_time = time.time()
+            full_state_dict, _ = consolidate_sharded_model_checkpoints(
+                        ckpt_prefix=osp.join(self.args.ckpt_dir, ""),
+                        ckpt_suffix=f"rank-*-of-*-step-{step}.pth",
+                        save_model=False,
+                    )
+            end_time = time.time()
+            print(f"rank:{xm.get_ordinal()} consolidate_sharded_model_checkpoints time: {end_time - start_time} seconds")
+            
+            start_time = time.time()
+            ta.save(full_state_dict, os.path.join(self.args.ckpt_dir, "_consolidated.pth"))
+            end_time = time.time()
+            print(f"rank:{xm.get_ordinal()} save consolidate model time: {end_time - start_time} seconds")
+            print("model saving done!")
+            
+        xm.rendezvous("saving_model_states")
+        
         self.tokenizer.save_pretrained(
             self.args.ckpt_dir,
             is_main_process=xm.is_master_ordinal(local=False),
             save_function=ta.save)
 
         xm.rendezvous("saving_optimizer_states")
+        start_time = time.time()
         ta.save(
             self.optimizer.state_dict(),
             os.path.join(
                 self.args.ckpt_dir, f"optimizer_rank{xm.get_ordinal()}"
-                f"-of-{ta.dist.world_size()}-step-{step}"))
+                f"-of-{ta.dist.world_size()}-step-{step}"),
+                master_only = False)
+        end_time = time.time()
+        if xm.get_ordinal() == 0:
+            print(f"rank:{xm.get_ordinal()} load {ta.dist.world_size()} shard optimizer time: {end_time - start_time} seconds")
+        
         ta.save(
             self.lr_scheduler.state_dict(),
             os.path.join(
                 self.args.ckpt_dir, f"scheduler_rank{xm.get_ordinal()}"
-                f"-of-{ta.dist.world_size()}-step-{step}"))
+                f"-of-{ta.dist.world_size()}-step-{step}"),
+                master_only = False
+            )
 
         # save rng states
         ta.save({"xla": xm.get_rng_state()},
