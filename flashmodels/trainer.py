@@ -324,7 +324,7 @@ class Trainer(object):
                 master_only = False)
         end_time = time.time()
         if xm.get_ordinal() == 0:
-            print(f"rank:{xm.get_ordinal()} load {ta.dist.world_size()} shard optimizer time: {end_time - start_time} seconds")
+            print(f"rank:{xm.get_ordinal()} save {ta.dist.world_size()} shard optimizer time: {end_time - start_time} seconds")
         
         ta.save(
             self.lr_scheduler.state_dict(),
